@@ -67,10 +67,30 @@
         </div>
         <div>
           <div class="rowitem"><span>5-minute move</span><strong id="m5">—</strong></div>
+          <div class="rowitem"><span>10-minute move</span><strong id="m10">—</strong></div>
+        </div>
+        <div>
+          <div class="rowitem"><span>3m acceleration</span><strong id="accel">—</strong></div>
+          <div class="rowitem"><span>10m volatility</span><strong id="vol">—</strong></div>
           <div class="rowitem"><span>Trend alignment</span><strong id="align">—</strong></div>
         </div>
       </div>
       <ul class="reason-list" id="reasonList"><li>Waiting for enough completed one-minute candles.</li></ul>
+    </section>
+
+    <div class="section-title">Entry economics · one contract</div>
+    <section class="panel">
+      <div class="rows">
+        <div>
+          <div class="rowitem"><span>Selected side ask</span><strong id="entryAsk">—</strong></div>
+          <div class="rowitem"><span>Estimated taker fee</span><strong id="fee">—</strong></div>
+        </div>
+        <div>
+          <div class="rowitem"><span>Break-even win rate</span><strong id="breakeven">—</strong></div>
+          <div class="rowitem"><span>Calibrated win probability</span><strong id="probability">NOT AVAILABLE</strong></div>
+        </div>
+      </div>
+      <div class="warning" style="margin-top:12px">Expected value is withheld until the strategy has enough settled paper-trade results to calibrate probabilities. A directional setup is not automatically a profitable entry.</div>
     </section>
 
     <div class="section-title">iPhone controls</div>
@@ -80,8 +100,8 @@
       <div class="statusline" id="alertStatus">Alerts are shown while this dashboard is open. Allow notifications when prompted.</div>
     </section>
 
-    <div class="warning"><b>Important:</b> This is a rule-based indicator, not a proven or calibrated prediction model. Kalshi settles this contract using the CF Benchmarks BRTI 60-second average; this dashboard uses Coinbase spot/candles as a proxy. It can be wrong, and “NO TRADE” is intentional when the inputs disagree or data is incomplete.</div>
-    <div class="fine">Read-only tool. It does not connect to your Kalshi account, submit orders, or move money. Never treat a signal as guaranteed. Test with paper decisions first and account for Kalshi fees and the contract price.</div>
+    <div class="warning"><b>Important:</b> This is an experimental directional filter, not a calibrated prediction model. Kalshi settles this market using the CF Benchmarks BRTI opening- and closing-minute averages; Coinbase spot/candles are only a proxy. PAPER UP/DOWN means record for testing, not a real-money recommendation. It can be wrong, and “NO TRADE” is intentional when the inputs disagree or data is incomplete.</div>
+    <div class="fine">Read-only tool. It does not connect to your Kalshi account, submit orders, or move money. Never treat a signal as guaranteed. Do not trade real money from these signals. The fee estimate uses the published standard taker formula and may differ for special fee schedules or maker orders.</div>
     <div class="sources"><a href="https://degenhedge.com/api/" target="_blank" rel="noreferrer">Kalshi market-data API details</a><a href="https://docs.cdp.coinbase.com/exchange/reference/exchangerestapi_getproductcandles" target="_blank" rel="noreferrer">Coinbase candle API</a><a href="https://kalshi.com/markets/KXBTC15M" target="_blank" rel="noreferrer">Kalshi BTC 15m</a></div>
   </main>
   <footer class="footer">BTC SIGNAL · public market data · refreshes only while the page is running</footer>
@@ -140,63 +160,77 @@
   function noTrade(reason, context={}) {
     return {side:'NONE', title:'NO TRADE', strength:'—', score:0, message:reason, reasons:[reason], ...context};
   }
+  function takerFeeCents(priceCents, contracts=1) {
+    if (!Number.isFinite(priceCents) || priceCents<=0 || priceCents>=100) return null;
+    // Kalshi standard taker fee: ceil to next cent of $0.07 * C * P * (1-P).
+    const p=priceCents/100;
+    const dollars=0.07*contracts*p*(1-p);
+    return Math.ceil(dollars*100-1e-9);
+  }
   function evaluate(market, spot, candles) {
-    if (!market || market.available !== true) return noTrade('Kalshi market data is currently unavailable. No signal will be shown until it returns.');
-    if (market.stale === true) return noTrade('The market-data provider marked this snapshot stale. Waiting for a fresh reading.');
-    const strike = Number(market.strike);
-    if (!Number.isFinite(strike) || strike <= 0) return noTrade('Kalshi has not posted the official target price for this window yet.');
-    if (market.window_open === false) return noTrade('The market is between windows or not open. Waiting for the next active window.');
-    if (!market.close_time) return noTrade('The active market close time is missing.');
-    const closeMs = Date.parse(market.close_time);
-    if (!Number.isFinite(closeMs)) return noTrade('Could not read the market close time.');
-    const secondsLeft = Math.floor((closeMs - Date.now())/1000);
-    if (secondsLeft <= 120) return noTrade('Less than two minutes remain. Late-window signals are disabled to avoid chasing the close.', {secondsLeft,closeMs});
-    if (!Number.isFinite(spot) || spot <= 0) return noTrade('Coinbase BTC spot price is missing.');
-    if (candles.length < 7) return noTrade('Not enough completed one-minute candles yet.');
+    if (!market || market.available !== true) return noTrade('Kalshi market data is unavailable. No signal until fresh market data returns.');
+    if (market.stale === true) return noTrade('Market provider marked this snapshot stale. Waiting for fresh data.');
+    const strike=Number(market.strike);
+    if (!Number.isFinite(strike)||strike<=0) return noTrade('Official target price is missing.');
+    if (market.window_open===false) return noTrade('Market is not currently open.');
+    if (!market.close_time) return noTrade('Market close time is missing.');
+    const closeMs=Date.parse(market.close_time);
+    if (!Number.isFinite(closeMs)) return noTrade('Could not read market close time.');
+    const secondsLeft=Math.floor((closeMs-Date.now())/1000);
+    if (secondsLeft<=120) return noTrade('Less than two minutes remain; late-window entries are filtered.',{secondsLeft,closeMs});
+    if (!Number.isFinite(spot)||spot<=0) return noTrade('Coinbase spot price is missing.');
+    if (candles.length<12) return noTrade('Need at least 12 completed one-minute candles for the 10-minute trend filter.');
 
-    const last = candles[candles.length-1].close;
-    const m1 = change(last,candles[candles.length-2].close);
-    const m3 = change(last,candles[candles.length-4].close);
-    const m5 = change(last,candles[candles.length-6].close);
-    const gap = change(spot,strike);
-    const upAsk = market.yes_ask_cents == null ? NaN : Number(market.yes_ask_cents);
-    const downAsk = market.no_ask_cents == null ? NaN : Number(market.no_ask_cents);
-    const upBid = market.yes_bid_cents == null ? NaN : Number(market.yes_bid_cents);
-    const downBid = market.no_bid_cents == null ? NaN : Number(market.no_bid_cents);
-    const quoteMissing = !Number.isFinite(upAsk) || !Number.isFinite(downAsk);
-    if (quoteMissing) return noTrade('Kalshi is not returning both contract ask prices. Signal withheld.',{gap,m1,m3,m5,secondsLeft,closeMs});
+    const n=candles.length, last=candles[n-1].close;
+    for(let i=n-10;i<n;i++){ if(candles[i].time-candles[i-1].time!==60) return noTrade('Recent Coinbase candle history has gaps. Waiting for a complete 10-minute sequence.'); }
+    const m1=change(last,candles[n-2].close);
+    const m3=change(last,candles[n-4].close);
+    const m5=change(last,candles[n-6].close);
+    const m10=change(last,candles[n-11].close);
+    const prior3=change(candles[n-4].close,candles[n-7].close);
+    const accel=m3-prior3;
+    const returns=[];
+    for(let i=n-10;i<n;i++) returns.push(change(candles[i].close,candles[i-1].close));
+    const mean=returns.reduce((a,b)=>a+b,0)/returns.length;
+    const vol=Math.sqrt(returns.reduce((a,b)=>a+(b-mean)**2,0)/returns.length);
+    const gap=change(spot,strike);
+    const upAsk=market.yes_ask_cents==null?NaN:Number(market.yes_ask_cents);
+    const downAsk=market.no_ask_cents==null?NaN:Number(market.no_ask_cents);
+    const upBid=market.yes_bid_cents==null?NaN:Number(market.yes_bid_cents);
+    const downBid=market.no_bid_cents==null?NaN:Number(market.no_bid_cents);
+    if(!Number.isFinite(upAsk)||!Number.isFinite(downAsk)) return noTrade('Both contract ask quotes are required.',{gap,m1,m3,m5,m10,accel,vol,secondsLeft,closeMs});
+    const upSpread=Number.isFinite(upBid)?upAsk-upBid:null;
+    const downSpread=Number.isFinite(downBid)?downAsk-downBid:null;
+    const score=0.35*clamp(gap/0.05)+0.20*clamp(m3/0.025)+0.20*clamp(m5/0.04)+0.25*clamp(m10/0.07);
+    const base={gap,m1,m3,m5,m10,accel,vol,score,secondsLeft,closeMs,upAsk,downAsk,upBid,downBid,upSpread,downSpread};
+    if(vol>0.045) return noTrade('One-minute volatility is unusually high; skipping unstable conditions.',base);
+    if(upAsk>=85&&downAsk>=85) return noTrade('Both contracts are too expensive for this filter.',base);
 
-    const upSpread = Number.isFinite(upBid) ? upAsk-upBid : null;
-    const downSpread = Number.isFinite(downBid) ? downAsk-downBid : null;
-    const gapN=clamp(gap/0.05), m5N=clamp(m5/0.04), m3N=clamp(m3/0.025);
-    const score=0.45*gapN + 0.35*m5N + 0.20*m3N;
-    const base={gap,m1,m3,m5,score,secondsLeft,closeMs,upAsk,downAsk,upBid,downBid,upSpread,downSpread};
-
-    if (upAsk >= 80 && downAsk >= 80) return noTrade('Both displayed asks are unusually expensive; avoiding a poor entry.',base);
-    if (gap >= 0.02 && m5 >= 0.015 && m3 > -0.02 && score >= 0.55) {
-      if (upAsk >= 80) return noTrade('UP direction aligns, but the UP ask is 80¢ or higher. Skipping the expensive entry.',base);
-      if (upSpread !== null && upSpread > 15) return noTrade('UP direction aligns, but the UP bid/ask spread is wider than 15¢.',base);
-      const strength=score>=0.72?'STRONG ALIGNMENT':'MODERATE ALIGNMENT';
-      return {side:'UP',title:'BUY UP',strength,score,message:'Spot is above the Kalshi target and recent momentum is positive.',reasons:[`Coinbase spot is ${pct(gap)} versus the Kalshi target.`,`Completed 5-minute candle move: ${pct(m5)}.`,`Completed 3-minute candle move: ${pct(m3)}.`,`UP ask: ${cents(upAsk)}${upSpread!==null?` · spread ${cents(upSpread)}`:''}.`],...base};
+    let side=null, ask=null, spread=null;
+    if(gap>=0.025&&m3>0.005&&m5>0.01&&m10>0.015&&accel>-0.015&&score>=0.48){side='UP';ask=upAsk;spread=upSpread;}
+    if(gap<=-0.025&&m3< -0.005&&m5< -0.01&&m10< -0.015&&accel<0.015&&score<=-0.48){side='DOWN';ask=downAsk;spread=downSpread;}
+    if(!side){
+      let why='Trend, target gap, and acceleration do not agree strongly enough.';
+      if((gap>0&&m10<0)||(gap<0&&m10>0)) why='The 10-minute trend conflicts with the spot-versus-target direction.';
+      else if(Math.abs(gap)<0.025) why='BTC is too close to the target to establish a directional edge.';
+      else if(Math.abs(m10)<0.015) why='The 10-minute trend is too weak.';
+      else if((gap>0&&accel< -0.015)||(gap<0&&accel>0.015)) why='Momentum is decelerating against the proposed direction.';
+      return noTrade(why,base);
     }
-    if (gap <= -0.02 && m5 <= -0.015 && m3 < 0.02 && score <= -0.55) {
-      if (downAsk >= 80) return noTrade('DOWN direction aligns, but the DOWN ask is 80¢ or higher. Skipping the expensive entry.',base);
-      if (downSpread !== null && downSpread > 15) return noTrade('DOWN direction aligns, but the DOWN bid/ask spread is wider than 15¢.',base);
-      const strength=score<=-0.72?'STRONG ALIGNMENT':'MODERATE ALIGNMENT';
-      return {side:'DOWN',title:'BUY DOWN',strength,score,message:'Spot is below the Kalshi target and recent momentum is negative.',reasons:[`Coinbase spot is ${pct(gap)} versus the Kalshi target.`,`Completed 5-minute candle move: ${pct(m5)}.`,`Completed 3-minute candle move: ${pct(m3)}.`,`DOWN ask: ${cents(downAsk)}${downSpread!==null?` · spread ${cents(downSpread)}`:''}.`],...base};
-    }
-    let why='Price gap and short-term momentum are not aligned strongly enough.';
-    if (Math.abs(gap)<0.02) why='BTC is too close to the Kalshi target for this rule set.';
-    else if (Math.abs(m5)<0.015) why='The 5-minute move is too small to confirm direction.';
-    else if ((gap>0 && m5<0)||(gap<0 && m5>0)) why='Spot is on one side of the target, but 5-minute momentum points the other way.';
-    return noTrade(why,base);
+    if(!Number.isFinite(ask)||ask<=0||ask>=100) return noTrade('Selected contract ask is invalid.',base);
+    if(spread!==null&&spread>8) return noTrade(`${side} setup rejected: bid/ask spread exceeds 8¢.`,base);
+    if(ask>=75) return noTrade(`${side} direction aligns, but the contract costs 75¢ or more.`,base);
+    const fee=takerFeeCents(ask,1);
+    const breakeven=ask+fee;
+    const title=side==='UP'?'PAPER UP SETUP':'PAPER DOWN SETUP';
+    return {side,title,strength:'TECHNICAL FILTER ONLY',score,message:`${side} directional conditions align. Paper-track only; profitability is not established.`,reasons:[`Spot vs target: ${pct(gap)}.`,`3m / 5m / 10m moves: ${pct(m3)} / ${pct(m5)} / ${pct(m10)}.`,`3m acceleration: ${pct(accel)}.`,`10m one-minute return volatility: ${vol.toFixed(4)}%.`,`${side} ask ${cents(ask)}; estimated one-contract taker fee ${fee}¢; break-even ${breakeven}%.`,`No calibrated win probability exists yet, so expected value is withheld.`],entryAsk:ask,feeCents:fee,breakeven,...base};
   }
   function render(market, spot, decision) {
     const title=$('signalText');
     title.textContent=decision.title;
     title.className='signal '+(decision.side==='UP'?'up':decision.side==='DOWN'?'down':'none');
     $('signalNote').textContent=decision.message;
-    $('strength').innerHTML=`Signal alignment: <b>${decision.strength}${decision.score?` · ${Math.round(Math.abs(decision.score)*100)}/100`:''}</b>`;
+    $('strength').innerHTML=`Technical filter: <b>${decision.strength}${decision.score?` · ${Math.round(Math.abs(decision.score)*100)}/100`:''}</b>`;
     $('ticker').textContent=`Market: ${market.ticker || '—'}`;
     $('spot').textContent=money(spot,2);
     $('strike').textContent=money(market.strike,2);
@@ -205,9 +239,10 @@
     $('closeAt').textContent=decision.closeMs?`Close: ${new Date(decision.closeMs).toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'})}`:'Close: —';
     $('upAsk').textContent=cents(market.yes_ask_cents); $('upBid').textContent=cents(market.yes_bid_cents);
     $('downAsk').textContent=cents(market.no_ask_cents); $('downBid').textContent=cents(market.no_bid_cents);
-    $('m1').textContent=pct(decision.m1); $('m3').textContent=pct(decision.m3); $('m5').textContent=pct(decision.m5);
-    for (const id of ['m1','m3','m5']) { const el=$(id); signClass(el,parseFloat(el.textContent)); }
-    $('align').textContent=decision.side==='NONE'?'MIXED / WEAK':decision.side==='UP'?'BULLISH':'BEARISH';
+    $('m1').textContent=pct(decision.m1); $('m3').textContent=pct(decision.m3); $('m5').textContent=pct(decision.m5); $('m10').textContent=pct(decision.m10); $('accel').textContent=pct(decision.accel); $('vol').textContent=Number.isFinite(decision.vol)?`${decision.vol.toFixed(4)}%`:'—';
+    $('entryAsk').textContent=Number.isFinite(decision.entryAsk)?cents(decision.entryAsk):'—'; $('fee').textContent=Number.isFinite(decision.feeCents)?`${decision.feeCents}¢`:'—'; $('breakeven').textContent=Number.isFinite(decision.breakeven)?`${decision.breakeven.toFixed(0)}%`:'—'; $('probability').textContent='NOT CALIBRATED';
+    for (const id of ['m1','m3','m5','m10','accel']) { const el=$(id); signClass(el,parseFloat(el.textContent)); }
+    $('align').textContent=decision.side==='NONE'?'MIXED / WEAK':decision.side==='UP'?'PAPER UP':'PAPER DOWN';
     $('align').className=decision.side==='UP'?'positive':decision.side==='DOWN'?'negative':'neutral';
     $('reasonList').innerHTML='';
     for (const reason of decision.reasons || []) { const li=document.createElement('li'); li.textContent=reason; $('reasonList').appendChild(li); }
@@ -230,7 +265,7 @@
         await swRegistration.showNotification(`Kalshi BTC: ${decision.title}`,{body,icon:'./icon-192.png',badge:'./icon-192.png',tag:'btc-signal',renotify:true,data:{url:currentMarketUrl}});
       }
     } catch (_) {}
-    $('alertStatus').textContent=`Signal changed to ${decision.title}. ${notificationReady?'An alert was requested.':'Open the app to see live signals.'}`;
+    $('alertStatus').textContent=`Signal changed to ${decision.title}. Paper signal only; no order placed.`;
   }
   async function refreshAll() {
     $('refresh').disabled=true;
@@ -248,7 +283,7 @@
       $('signalText').textContent='NO TRADE';
       $('signalText').className='signal none';
       $('signalNote').textContent='Could not refresh all required data. The bot will not guess.';
-      $('strength').textContent='Signal alignment: unavailable';
+      $('strength').textContent='Technical filter: unavailable';
       $('updated').textContent=`${err && err.message ? err.message : 'Unknown data error'} · retrying automatically`;
       $('reasonList').innerHTML='<li>Market data or BTC quote failed. Check connection; next refresh will retry.</li>';
     } finally { $('refresh').disabled=false; }

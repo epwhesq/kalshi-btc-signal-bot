@@ -1,29 +1,34 @@
-# BTC Signal · Kalshi 15m
+# BTC Signal · Kalshi 15m · V2 (paper mode)
 
-A free, read-only iPhone-friendly dashboard that checks the current Kalshi KXBTC15M window and independent BTC market data, then displays BUY UP, BUY DOWN, or NO TRADE.
+A free, read-only iPhone-friendly dashboard for the Kalshi KXBTC15M market. This version adds more conservative directional filters and a fee/break-even display. It does **not** claim to have a profitable or calibrated prediction model.
 
-## What it uses
-- **Kalshi market snapshot:** DegenHedge's public `/api/btc-window` endpoint. Its docs say the market fields (ticker, strike, bid/ask, and close time) are read from Kalshi's public API. DegenHedge is independent and not affiliated with Kalshi.
-- **BTC spot and 1-minute candles:** Coinbase Exchange public BTC-USD REST market-data endpoints. No API key or Kalshi login is required.
-- **No order placement:** the app does not connect to a Kalshi account or submit trades.
+## Data sources
+- Kalshi market snapshot: DegenHedge public `/api/btc-window` endpoint (third-party provider; not affiliated with Kalshi).
+- BTC spot and 1-minute candles: Coinbase Exchange public BTC-USD endpoints. Coinbase is a proxy, not the settlement benchmark.
+- Kalshi says most crypto markets settle on CF Benchmarks indices; its 15-minute markets compare the opening-minute average with the closing-minute average. The specific market rules control. See https://help.kalshi.com/en/articles/13823838-crypto-markets
 
-## Signal rules
-The dashboard uses the Coinbase spot-vs-Kalshi-target gap plus completed 3-minute and 5-minute candle momentum. It requires those inputs to align, requires a live market quote, skips stale/missing data, skips the final two minutes of the window, skips an ask at or above 80 cents, and skips a bid/ask spread wider than 15 cents. Everything else is NO TRADE.
+## V2 directional filters
+- Requires 12 completed one-minute candles and a continuous recent 10-minute candle sequence.
+- Calculates 1m, 3m, 5m and 10m momentum, 3m acceleration, and recent one-minute return volatility.
+- Requires target gap and multi-horizon momentum to agree.
+- Rejects unusually high volatility, wide spreads, expensive asks, missing/stale market data, and the final two minutes.
+- Directional outputs are labelled `PAPER UP SETUP` / `PAPER DOWN SETUP`; they are not real-money recommendations.
 
-This is a transparent heuristic, not a backtested or calibrated model. Kalshi's 15-minute BTC contract settles on the CF Benchmarks BRTI 60-second average, not Coinbase's spot quote. That difference can change an outcome. Do not treat the signal as a probability or guarantee.
+## Fee and break-even display
+For one contract, the displayed estimate applies the standard Kalshi taker-fee formula `round up to cent(0.07 × C × P × (1-P))`, with C=1 and P=ask price in dollars. The displayed break-even percentage is ask cents plus the estimated fee cents, divided by the $1 payout. Actual fees can vary by market, fee schedule, order type and rounding. Check https://kalshi.com/fee-schedule before trading.
 
-## Publish free using GitHub Pages (iPhone friendly)
-1. Download and extract `kalshi-btc-signal-bot.zip` in the iPhone **Files** app.
-2. In Safari, open **https://github.com/new** and sign in.
-3. Create a repository named `kalshi-btc-signal-bot`. Set it to **Public**, then tap **Create repository**.
-4. In the repository, choose **Add file → Upload files**. Upload these five files from the extracted folder to the repository's top level: `index.html`, `manifest.webmanifest`, `sw.js`, `icon-192.png`, and `icon-512.png`. Tap **Commit changes**.
-5. Open the repository's **Settings → Pages**. Under **Build and deployment**, select **Deploy from a branch**, choose branch **main** and folder **/(root)**, then save.
-6. GitHub will show the published address. It will look like `https://YOUR-USERNAME.github.io/kalshi-btc-signal-bot/`.
-7. Open that address in **Safari** on the iPhone. Tap **Share → Add to Home Screen → Add**.
-8. Open the new **BTC Signal** Home Screen icon. Tap **Enable alerts** and allow notifications if iOS offers the prompt.
+The dashboard deliberately shows `NOT CALIBRATED` for win probability and withholds expected value. A technical score is not a probability. Do not trade real money based on this version. We need a properly graded paper-trade sample and out-of-sample testing before estimating probabilities or claiming positive expectancy.
 
-## Important iPhone alert limitation
-This free static version refreshes every 15 seconds and can show a browser notification for a signal change **while the dashboard is open and running**. It cannot check markets or send new alerts after you fully close the app. True background push alerts require a separate always-on service that checks the market and sends Web Push; free Render web services sleep after inactivity, so this project does not pretend to offer 24/7 background alerts.
+## Publish update to your existing GitHub Pages site
+1. Download the V2 ZIP and extract it in iPhone Files.
+2. Open your existing GitHub repository in Safari.
+3. Choose **Add file → Upload files**.
+4. Upload all six files from this folder to the repository root, replacing the existing files when prompted: `index.html`, `manifest.webmanifest`, `sw.js`, `icon-192.png`, `icon-512.png`, and `README.md`.
+5. Tap **Commit changes** on the `main` branch. GitHub Pages will redeploy automatically.
+6. Open the site in Safari and refresh. If the old version remains, close the tab, reopen the site, and refresh again; the service-worker cache version was incremented.
 
-## If the page shows DATA ISSUE
-Check the iPhone internet connection and tap **Refresh now**. If the market-data provider or Coinbase is temporarily unavailable, the app intentionally displays NO TRADE instead of guessing.
+## Limitations
+- This static site only refreshes while open. It does not run 24/7 in the background.
+- It does not connect to your Kalshi account or place orders.
+- Coinbase is not CF Benchmarks BRTI. A close proxy value can differ from settlement.
+- No strategy can guarantee profits.
