@@ -188,6 +188,7 @@ function noTrade(reason,extra={}){
 function evaluate(market,spot,candles){
  if(!market||market.available!==true)return noTrade('Kalshi market data is unavailable.');
  if(market.stale===true)return noTrade('Market data is stale. Waiting for a fresh quote.');
+
  const strike=Number(market.strike);
  if(!Number.isFinite(strike)||strike<=0)return noTrade('Market target price is missing.');
  if(market.window_open===false)return noTrade('The market is not currently open.');
@@ -195,6 +196,7 @@ function evaluate(market,spot,candles){
 
  const closeMs=Date.parse(market.close_time);
  if(!Number.isFinite(closeMs))return noTrade('Could not read market closing time.');
+
  const secondsLeft=Math.floor((closeMs-Date.now())/1000);
  if(secondsLeft<=120)return noTrade('Less than two minutes remain. Skipping late entries.',{secondsLeft,closeMs});
  if(!Number.isFinite(spot)||spot<=0)return noTrade('BTC spot price is unavailable.');
@@ -235,17 +237,20 @@ function evaluate(market,spot,candles){
 
  let side=null,ask=null,bid=null;
 
- if(gap>=.025&&m3>.005&&m5>.01&&m10>.015&&score>=.48){
+ // Less restrictive momentum and alignment thresholds.
+ if(gap>=.015&&m3>.003&&m5>.006&&m10>.01&&score>=.35){
   side='UP';ask=upAsk;bid=upBid;
  }
- if(gap<=-.025&&m3<-.005&&m5<-.01&&m10<-.015&&score<=-.48){
+
+ if(gap<=-.015&&m3<-.003&&m5<-.006&&m10<-.01&&score<=-.35){
   side='DOWN';ask=downAsk;bid=downBid;
  }
 
- if(!side)return noTrade('BTC direction, target gap and momentum do not agree strongly enough.',{...base,score});
+ if(!side)
+  return noTrade('BTC direction, target gap and momentum do not agree strongly enough.',{...base,score});
 
  if(!Number.isFinite(ask)||ask<=0||ask>=100)
-  return noTrade('Selected contract ask is invalid.',base);
+  return noTrade('Selected contract ask is invalid',base);
 
  const spread=Number.isFinite(bid)?ask-bid:null;
  if(spread!==null&&spread>8)
@@ -295,6 +300,7 @@ function render(market,spot,d){
  $('target').textContent=Number.isFinite(d.takeProfit)?cents(d.takeProfit):'—';
  $('stop').textContent=Number.isFinite(d.stopLoss)?cents(d.stopLoss):'—';
  $('entrySide').textContent=d.side==='NONE'?'No active setup':d.side+' contract · maximum buy price';
+
  const currentBid=d.side==='UP'?d.upBid:d.side==='DOWN'?d.downBid:NaN;
  $('sell').textContent=Number.isFinite(currentBid)?cents(currentBid):'—';
 
@@ -330,18 +336,24 @@ async function refresh(){
  if(busy)return;
  busy=true;
  $('refresh').disabled=true;
+
  try{
   const [market,ticker,raw]=await Promise.all([
-   getJson(MARKET_API),getJson(TICKER_API),getJson(CANDLES_API)
+   getJson(MARKET_API),
+   getJson(TICKER_API),
+   getJson(CANDLES_API)
   ]);
+
   const spot=Number(ticker.price);
   if(!Number.isFinite(spot))throw new Error('Coinbase BTC price unavailable.');
 
   const candles=candlesFrom(raw);
   const decision=evaluate(market,spot,candles);
+
   render(market,spot,decision);
   $('live').textContent='LIVE DATA';
   $('dot').classList.remove('off');
+
  }catch(error){
   $('live').textContent='DATA ISSUE';
   $('dot').classList.add('off');
@@ -349,6 +361,7 @@ async function refresh(){
   $('signal').className='signal none';
   $('message').textContent='Could not refresh the required data. The bot will not guess.';
   $('updated').textContent=error.message+' · retrying automatically';
+
  }finally{
   busy=false;
   $('refresh').disabled=false;
