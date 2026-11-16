@@ -18,7 +18,7 @@
     .hero{background:linear-gradient(150deg,#14263d,#0e1929 68%);border:1px solid #29405d;border-radius:25px;padding:21px 19px 18px;box-shadow:0 18px 50px #0005;position:relative;overflow:hidden}.hero:before{content:"";position:absolute;width:230px;height:230px;border-radius:50%;right:-90px;top:-125px;background:#3289d51a;filter:blur(2px)}.eyebrow{color:#a6bdd6;text-transform:uppercase;font-size:11px;font-weight:800;letter-spacing:.15em}.signal{font-size:clamp(36px,11vw,58px);line-height:1.05;font-weight:900;letter-spacing:-.05em;margin:14px 0 6px}.signal.up{color:var(--green)}.signal.down{color:var(--red)}.signal.none{color:#d7e2ef}.signal-note{font-size:14px;color:#b1c2d6;max-width:540px;min-height:40px}.hero-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:18px;padding-top:14px;border-top:1px solid #ffffff16;flex-wrap:wrap}.strength{font-size:12px;color:#c7d7e8}.strength b{color:#fff}.ticker{font-size:10px;color:#88a2bd;overflow-wrap:anywhere}
     .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0}.tile,.panel{background:linear-gradient(160deg,#111e30,#0d1725);border:1px solid var(--line);border-radius:17px;padding:14px}.tile .label,.panel .label{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:800}.tile .value{font-size:clamp(17px,5vw,23px);font-weight:800;margin-top:7px;letter-spacing:-.03em}.tile .sub{font-size:11px;color:#93a9c3;margin-top:2px}
     .section-title{font-size:12px;text-transform:uppercase;color:#9db2ca;letter-spacing:.14em;font-weight:800;margin:22px 2px 9px}.panel{padding:16px}.rows{display:grid;grid-template-columns:1fr 1fr;gap:12px}.rowitem{display:flex;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid #ffffff10}.rowitem:last-child{border-bottom:0}.rowitem span:first-child{color:var(--muted);font-size:12px}.rowitem strong{font-size:13px;text-align:right}.positive{color:var(--green)!important}.negative{color:var(--red)!important}.neutral{color:#d7e2ef!important}.reason-list{padding-left:18px;margin:8px 0 0;color:#c6d5e5;font-size:13px}.reason-list li{margin:7px 0}.buttons{display:flex;gap:9px;margin:14px 0 0;flex-wrap:wrap}.btn{border:1px solid #345273;background:#172b43;color:#e8f2ff;padding:11px 14px;border-radius:13px;font-weight:750;font-size:12px;cursor:pointer;flex:1;min-width:130px}.btn.primary{background:#173b5d;border-color:#3673aa}.btn:active{transform:scale(.99)}.statusline{font-size:11px;color:var(--muted);margin-top:11px;min-height:16px}.warning{border:1px solid #685331;background:#2a2214;border-radius:14px;color:#e7d3a6;padding:12px 13px;font-size:12px;margin-top:15px}.fine{font-size:11px;color:#8499b1;line-height:1.55;margin:14px 2px}.sources{display:flex;gap:14px;flex-wrap:wrap;margin:10px 2px}.sources a{color:#8ec5ff;font-size:11px;text-decoration:none}.footer{padding:18px 4px 4px;color:#657d98;font-size:10px;text-align:center}.bad{color:var(--yellow)}
-    @media(max-width:410px){body{padding-left:12px;padding-right:12px}.hero{padding:18px 16px}.grid{gap:7px}.tile{padding:11px 9px}.tile .label{font-size:9px}.rows{grid-template-columns:1fr}.top{padding-top:10px}}
+    .statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}.statbox{background:#0a1422;border:1px solid #203149;border-radius:13px;padding:11px}.statbox b{display:block;font-size:19px;margin-top:3px}.statbox span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}.trade{border-top:1px solid #ffffff12;padding:11px 0}.tradehead{display:flex;justify-content:space-between;gap:8px;font-weight:750;font-size:12px}.trade small{display:block;color:var(--muted);font-size:10px;margin-top:4px}.trade .profit{font-weight:800}.tracker-actions{display:flex;gap:8px;flex-wrap:wrap}.tracker-actions .btn{min-width:100px}@media(max-width:410px){body{padding-left:12px;padding-right:12px}.hero{padding:18px 16px}.grid{gap:7px}.tile{padding:11px 9px}.tile .label{font-size:9px}.rows{grid-template-columns:1fr}.top{padding-top:10px}}
   </style>
 </head>
 <body>
@@ -93,6 +93,25 @@
       <div class="warning" style="margin-top:12px">Expected value is withheld until the strategy has enough settled paper-trade results to calibrate probabilities. A directional setup is not automatically a profitable entry.</div>
     </section>
 
+    <div class="section-title">Paper-trading performance</div>
+    <section class="panel" id="paperTracker">
+      <div class="statgrid">
+        <div class="statbox"><span>Recorded</span><b id="paperCount">0</b></div>
+        <div class="statbox"><span>Settled</span><b id="settledCount">0</b></div>
+        <div class="statbox"><span>Win rate</span><b id="paperWinRate">—</b></div>
+        <div class="statbox"><span>Net P/L</span><b id="paperPnl">—</b></div>
+        <div class="statbox"><span>Pending</span><b id="pendingCount">0</b></div>
+        <div class="statbox"><span>Drawdown</span><b id="paperDrawdown">—</b></div>
+      </div>
+      <div class="warning" style="margin-top:8px">A paper entry is recorded once per market, at the first qualifying signal seen while this dashboard is open. Results are stored only in this browser on this iPhone. Settlement is checked against Kalshi's public market record when available; otherwise it remains pending.</div>
+      <div class="tracker-actions buttons">
+        <button class="btn" id="exportPaper" type="button">Export CSV</button>
+        <button class="btn" id="refreshSettlements" type="button">Check settlements</button>
+      </div>
+      <div class="statusline" id="paperStatus">Paper tracker ready. No trades recorded.</div>
+      <div id="paperHistory"><div class="statusline">Your paper-trade history will appear here.</div></div>
+    </section>
+
     <div class="section-title">iPhone controls</div>
     <section class="panel">
       <div class="rowitem"><span>Automatic refresh</span><strong id="autoStatus">ON · every 15 sec</strong></div>
@@ -122,6 +141,9 @@
   let lastCloseMs = null;
   let notificationReady = false;
   let swRegistration = null;
+  const PAPER_KEY = 'btc-signal-paper-v1';
+  let paperTrades = loadPaperTrades();
+  let lastSettlementCheck = 0;
 
   function money(v, digits=2) {
     const n = Number(v);
@@ -225,6 +247,73 @@
     const title=side==='UP'?'PAPER UP SETUP':'PAPER DOWN SETUP';
     return {side,title,strength:'TECHNICAL FILTER ONLY',score,message:`${side} directional conditions align. Paper-track only; profitability is not established.`,reasons:[`Spot vs target: ${pct(gap)}.`,`3m / 5m / 10m moves: ${pct(m3)} / ${pct(m5)} / ${pct(m10)}.`,`3m acceleration: ${pct(accel)}.`,`10m one-minute return volatility: ${vol.toFixed(4)}%.`,`${side} ask ${cents(ask)}; estimated one-contract taker fee ${fee}¢; break-even ${breakeven}%.`,`No calibrated win probability exists yet, so expected value is withheld.`],entryAsk:ask,feeCents:fee,breakeven,...base};
   }
+  function loadPaperTrades() {
+    try { const v=JSON.parse(localStorage.getItem(PAPER_KEY)||'[]'); return Array.isArray(v)?v:[]; }
+    catch (_) { return []; }
+  }
+  function savePaperTrades() {
+    try { localStorage.setItem(PAPER_KEY,JSON.stringify(paperTrades.slice(-500))); }
+    catch (_) { $('paperStatus').textContent='Could not save paper history. Check available iPhone storage.'; }
+  }
+  function recordPaperTrade(market, decision) {
+    if (!['UP','DOWN'].includes(decision.side) || !market.ticker || !Number.isFinite(decision.entryAsk) || !Number.isFinite(decision.feeCents)) return;
+    if (paperTrades.some(t=>t.ticker===market.ticker)) return;
+    paperTrades.push({id:`${market.ticker}-${Date.now()}`,ticker:market.ticker,side:decision.side,entryAsk:Number(decision.entryAsk),feeCents:Number(decision.feeCents),breakEven:Number(decision.breakeven),createdAt:new Date().toISOString(),status:'PENDING',result:null,profitCents:null,settledAt:null});
+    savePaperTrades();
+    $('paperStatus').textContent=`Recorded first ${decision.side} setup for ${market.ticker} at ${decision.entryAsk.toFixed(1)}¢ plus estimated ${decision.feeCents}¢ fee. One entry per market.`;
+    renderPaperTracker();
+  }
+  async function checkSettlements(force=false) {
+    if (!force && Date.now()-lastSettlementCheck<60000) return;
+    lastSettlementCheck=Date.now();
+    const pending=paperTrades.filter(t=>t.status==='PENDING').slice(-30);
+    if (!pending.length) { renderPaperTracker(); return; }
+    let resolved=0;
+    await Promise.all(pending.map(async trade => {
+      try {
+        const data=await getJson(`https://api.elections.kalshi.com/trade-api/v2/markets/${encodeURIComponent(trade.ticker)}`,7000);
+        const m=data.market||data; const status=String(m.status||'').toLowerCase(); const result=String(m.result||'').toLowerCase();
+        if ((status==='settled'||status==='finalized') && (result==='yes'||result==='no')) {
+          const won=(trade.side==='UP'&&result==='yes')||(trade.side==='DOWN'&&result==='no');
+          trade.status='SETTLED'; trade.result=result.toUpperCase(); trade.won=won;
+          trade.profitCents=won?100-trade.entryAsk-trade.feeCents:-trade.entryAsk-trade.feeCents;
+          trade.settledAt=new Date().toISOString(); resolved++;
+        }
+      } catch (_) { /* CORS/network/provider failures leave the trade pending; never guess settlement. */ }
+    }));
+    savePaperTrades(); renderPaperTracker();
+    $('paperStatus').textContent=resolved?`${resolved} paper trade(s) newly settled from Kalshi's public market record.`:`Checked ${pending.length} pending market(s). Unsettled or unavailable results remain pending.`;
+  }
+  function renderPaperTracker() {
+    const settled=paperTrades.filter(t=>t.status==='SETTLED');
+    const wins=settled.filter(t=>t.won).length;
+    const pnl=settled.reduce((a,t)=>a+(Number(t.profitCents)||0),0);
+    let equity=0, peak=0, maxDd=0;
+    settled.slice().sort((a,b)=>new Date(a.settledAt)-new Date(b.settledAt)).forEach(t=>{equity+=Number(t.profitCents)||0;peak=Math.max(peak,equity);maxDd=Math.max(maxDd,peak-equity);});
+    $('paperCount').textContent=paperTrades.length; $('settledCount').textContent=settled.length;
+    $('paperWinRate').textContent=settled.length?`${(wins/settled.length*100).toFixed(1)}%`:'—';
+    $('paperPnl').textContent=settled.length?`${pnl>=0?'+':''}${(pnl/100).toFixed(2)}`:'—';
+    $('paperPnl').className=pnl>=0?'positive':'negative'; $('pendingCount').textContent=paperTrades.filter(t=>t.status==='PENDING').length;
+    $('paperDrawdown').textContent=settled.length?`${(maxDd/100).toFixed(2)}`:'—';
+    const history=$('paperHistory'); history.innerHTML='';
+    paperTrades.slice().reverse().slice(0,12).forEach(t=>{
+      const el=document.createElement('div'); el.className='trade';
+      const pnlText=t.status==='SETTLED'?`${t.profitCents>=0?'+':''}${(t.profitCents/100).toFixed(2)}`:'PENDING';
+      const pnlClass=t.status==='SETTLED'?(t.profitCents>=0?'positive':'negative'):'neutral';
+      const head=document.createElement('div'); head.className='tradehead';
+      const left=document.createElement('span'); left.textContent=`${t.side} · ${t.ticker}`;
+      const right=document.createElement('span'); right.className=`profit ${pnlClass}`; right.textContent=pnlText;
+      head.append(left,right); el.append(head);
+      const small=document.createElement('small'); small.textContent=`Entry ${Number(t.entryAsk).toFixed(1)}¢ + ${t.feeCents}¢ fee · ${new Date(t.createdAt).toLocaleString()}${t.status==='SETTLED'?` · ${t.result} settled`:''}`; el.append(small); history.append(el);
+    });
+    if (!paperTrades.length) history.innerHTML='<div class="statusline">No qualifying paper signals recorded yet. Keep the dashboard open; NO TRADE periods are not recorded.</div>';
+  }
+  function exportPaperCsv() {
+    const cols=['ticker','side','entryAsk','feeCents','breakEven','createdAt','status','result','won','profitCents','settledAt'];
+    const lines=[cols.join(','),...paperTrades.map(t=>cols.map(k=>`"${String(t[k]??'').replace(/"/g,'""')}"`).join(','))];
+    const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8'}); const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download='btc-signal-paper-trades.csv'; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
   function render(market, spot, decision) {
     const title=$('signalText');
     title.textContent=decision.title;
@@ -276,6 +365,8 @@
       const candles=normalizeCandles(candleRaw);
       const decision=evaluate(market,spot,candles);
       render(market,spot,decision);
+      recordPaperTrade(market,decision);
+      await checkSettlements(false);
       setLive(true,'LIVE DATA');
       await sendAlert(decision,market);
     } catch (err) {
@@ -290,6 +381,8 @@
   }
   function startTimer() { if (timer) clearInterval(timer); timer=setInterval(()=>{ if (auto) refreshAll(); },POLL_MS); }
   $('refresh').addEventListener('click',refreshAll);
+  $('exportPaper').addEventListener('click',exportPaperCsv);
+  $('refreshSettlements').addEventListener('click',()=>checkSettlements(true));
   $('openKalshi').addEventListener('click',()=>window.open(currentMarketUrl,'_blank','noopener'));
   $('toggleAuto').addEventListener('click',()=>{
     auto=!auto; $('toggleAuto').textContent=auto?'Pause auto refresh':'Resume auto refresh'; $('autoStatus').textContent=auto?'ON · every 15 sec':'PAUSED';
@@ -311,6 +404,7 @@
     navigator.serviceWorker.register('./sw.js').then(reg=>{swRegistration=reg;}).catch(()=>{});
   }
   try { lastSignalKey=localStorage.getItem('btc-signal-last') || ''; } catch (_) {}
+  renderPaperTracker();
   refreshAll(); startTimer();
   setInterval(()=>{ if (lastCloseMs) { const s=Math.floor((lastCloseMs-Date.now())/1000); if (s>=0) $('timeLeft').textContent=`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; } },1000);
 })();
