@@ -510,7 +510,7 @@ function render(market,spot,d){
 
  $('entrySide').textContent=d.side==='NONE'
   ?'No active setup'
-  :d.side+' contract · maximum buy price';
+  : d.side+' contract · max '+cents(d.dynamicMax);
 
  const currentBid=d.side==='UP'
   ?d.upBid
