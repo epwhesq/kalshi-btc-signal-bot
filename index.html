@@ -339,7 +339,9 @@ function evaluate(market,spot,candles){
 const shortMomentum=(s1*0.45)+(s3*0.55);
 const longMomentum=(s5*0.40)+(s10*0.60);
 
-const reversalAgainst =
+const direction=score>0?'UP':'DOWN';
+ 
+ const reversalAgainst =
  direction==='UP'
   ? shortMomentum < -0.25 && longMomentum > 0.25
   : shortMomentum > 0.25 && longMomentum < -0.25;
@@ -349,7 +351,6 @@ const reversalWarning =
   ? shortMomentum < -0.10
   : shortMomentum > 0.10;
  const confidence=Math.round(Math.abs(score)*100);
- const direction=score>0?'UP':'DOWN';
 
  const components=[gapScore,s1,s3,s5,s10];
 
