@@ -176,7 +176,30 @@ function pct(v){
 function clamp(v){
  return Math.max(-1,Math.min(1,v));
 }
+function dynamicEntryLimit(confidence,spread){
+ const tiers=[
+  [55,60],
+  [60,64],
+  [65,68],
+  [70,72],
+  [75,76],
+  [80,78]
+ ];
 
+ let limit=MIN_ENTRY_CENTS;
+
+ for(const [threshold,price] of tiers){
+  if(confidence>=threshold)limit=price;
+ }
+
+ // Penalize expensive spreads.
+ limit-=Math.max(0,spread-2)*1.5;
+
+ return Math.min(
+  MAX_ENTRY_CENTS,
+  Math.max(MIN_ENTRY_CENTS,limit)
+ );
+}
 function change(a,b){
  return (a/b-1)*100;
 }
