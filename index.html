@@ -374,7 +374,7 @@ const reversalWarning =
   return noTrade('BTC is too close to the target price.',common);
 
  // A strong opposing indicator can invalidate the setup.
- if(opposite>=2)
+ if(opposite>=2||reversalAgainst)
   return noTrade('Conflicting momentum detected.',common);
 
  // Require a minimum amount of directional agreement,
