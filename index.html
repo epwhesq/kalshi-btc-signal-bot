@@ -335,7 +335,19 @@ function evaluate(market,spot,candles){
   s3*0.25+
   s5*0.25+
   s10*0.15;
+// Compare short-term and longer-term momentum.
+const shortMomentum=(s1*0.45)+(s3*0.55);
+const longMomentum=(s5*0.40)+(s10*0.60);
 
+const reversalAgainst =
+ direction==='UP'
+  ? shortMomentum < -0.25 && longMomentum > 0.25
+  : shortMomentum > 0.25 && longMomentum < -0.25;
+
+const reversalWarning =
+ direction==='UP'
+  ? shortMomentum < -0.10
+  : shortMomentum > 0.10;
  const confidence=Math.round(Math.abs(score)*100);
  const direction=score>0?'UP':'DOWN';
 
