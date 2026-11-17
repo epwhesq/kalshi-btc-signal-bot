@@ -130,6 +130,7 @@ button:disabled{opacity:.5}
 <footer class="footer">BTC SIGNAL · PUBLIC MARKET DATA</footer>
 </div>
 
+
 <script>
 (() => {
 'use strict';
@@ -137,77 +138,144 @@ button:disabled{opacity:.5}
 const MARKET_API='https://degenhedge.com/api/btc-window';
 const TICKER_API='https://api.exchange.coinbase.com/products/BTC-USD/ticker';
 const CANDLES_API='https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=60';
+
 const POLL_MS=5000;
-const TAKE_PROFIT_CENTS=15;
-const STOP_LOSS_CENTS=10;
+const MIN_CONFIDENCE=54;
+const TAKE_PROFIT_CENTS=12;
+const STOP_LOSS_CENTS=8;
+const MAX_ENTRY_CENTS=72;
+const MAX_SPREAD_CENTS=8;
+
 const $=id=>document.getElementById(id);
 
 let marketUrl='https://kalshi.com/markets/KXBTC15M';
 let lastClose=null;
 let busy=false;
+let lastSignalKey='';
 
 function money(v){
+ if(v===null||v===undefined||v==='')return '—';
  const n=Number(v);
- return Number.isFinite(n)?n.toLocaleString('en-US',{style:'currency',currency:'USD'}):'—';
+ return Number.isFinite(n)?n.toLocaleString('en-US',{
+  style:'currency',currency:'USD'
+ }):'—';
 }
+
 function cents(v){
+ if(v===null||v===undefined||v==='')return '—';
  const n=Number(v);
  return Number.isFinite(n)?n.toFixed(1)+'¢':'—';
 }
+
 function pct(v){
- const n=Number(v);
- return Number.isFinite(n)?(n>=0?'+':'')+n.toFixed(3)+'%':'—';
+ if(!Number.isFinite(v))return '—';
+ return (v>=0?'+':'')+v.toFixed(3)+'%';
 }
-function change(a,b){return (a/b-1)*100;}
-function clamp(v){return Math.max(-1,Math.min(1,v));}
+
+function clamp(v){
+ return Math.max(-1,Math.min(1,v));
+}
+
+function change(a,b){
+ return (a/b-1)*100;
+}
 
 async function getJson(url){
  const controller=new AbortController();
  const timeout=setTimeout(()=>controller.abort(),10000);
+
  try{
-  const r=await fetch(url,{cache:'no-store',signal:controller.signal,headers:{Accept:'application/json'}});
+  const r=await fetch(url,{
+   cache:'no-store',
+   signal:controller.signal,
+   headers:{Accept:'application/json'}
+  });
+
   if(!r.ok)throw new Error('Data source HTTP '+r.status);
   return await r.json();
- }finally{clearTimeout(timeout);}
+
+ }finally{
+  clearTimeout(timeout);
+ }
 }
 
 function candlesFrom(raw){
  if(!Array.isArray(raw))return [];
+
  const nowMinute=Math.floor(Date.now()/60000)*60;
- return raw.filter(x=>Array.isArray(x)&&x.length>=5)
-  .map(x=>({time:Number(x[0]),close:Number(x[4])}))
-  .filter(x=>Number.isFinite(x.time)&&Number.isFinite(x.close)&&x.close>0&&x.time<nowMinute)
+
+ return raw
+  .filter(x=>Array.isArray(x)&&x.length>=5)
+  .map(x=>({
+   time:Number(x[0]),
+   close:Number(x[4])
+  }))
+  .filter(x=>
+   Number.isFinite(x.time)&&
+   Number.isFinite(x.close)&&
+   x.close>0&&
+   x.time<nowMinute
+  )
   .sort((a,b)=>a.time-b.time)
   .filter((x,i,a)=>i===0||x.time!==a[i-1].time);
 }
 
 function noTrade(reason,extra={}){
- return {side:'NONE',message:reason,reasons:[reason],...extra};
+ return {
+  side:'NONE',
+  message:reason,
+  reasons:[reason],
+  ...extra
+ };
 }
 
 function evaluate(market,spot,candles){
- if(!market||market.available!==true)return noTrade('Kalshi market data is unavailable.');
- if(market.stale===true)return noTrade('Market data is stale. Waiting for a fresh quote.');
+
+ if(!market||market.available!==true)
+  return noTrade('Kalshi market data is unavailable.');
+
+ if(market.stale===true)
+  return noTrade('Market data is stale.');
 
  const strike=Number(market.strike);
- if(!Number.isFinite(strike)||strike<=0)return noTrade('Market target price is missing.');
- if(market.window_open===false)return noTrade('The market is not currently open.');
- if(!market.close_time)return noTrade('Market closing time is unavailable.');
+
+ if(!Number.isFinite(strike)||strike<=0)
+  return noTrade('Market target price is missing.');
+
+ if(market.window_open===false)
+  return noTrade('Market is not currently open.');
+
+ if(!market.close_time)
+  return noTrade('Market closing time is unavailable.');
 
  const closeMs=Date.parse(market.close_time);
- if(!Number.isFinite(closeMs))return noTrade('Could not read market closing time.');
+
+ if(!Number.isFinite(closeMs))
+  return noTrade('Invalid market closing time.');
 
  const secondsLeft=Math.floor((closeMs-Date.now())/1000);
- if(secondsLeft<=120)return noTrade('Less than two minutes remain. Skipping late entries.',{secondsLeft,closeMs});
- if(!Number.isFinite(spot)||spot<=0)return noTrade('BTC spot price is unavailable.');
- if(candles.length<12)return noTrade('Waiting for at least 12 completed one-minute candles.',{secondsLeft,closeMs});
+
+ if(secondsLeft<=120)
+  return noTrade('Less than two minutes remain.',{
+   secondsLeft,closeMs
+  });
+
+ if(!Number.isFinite(spot)||spot<=0)
+  return noTrade('BTC spot price is unavailable.');
+
+ if(candles.length<12)
+  return noTrade('Waiting for 12 completed candles.',{
+   secondsLeft,closeMs
+  });
 
  const n=candles.length;
  const last=candles[n-1].close;
 
  for(let i=n-10;i<n;i++){
   if(candles[i].time-candles[i-1].time!==60)
-   return noTrade('Recent candle history has gaps. Waiting for complete data.',{secondsLeft,closeMs});
+   return noTrade('Recent candle history has gaps.',{
+    secondsLeft,closeMs
+   });
  }
 
  const m1=change(last,candles[n-2].close);
@@ -221,74 +289,159 @@ function evaluate(market,spot,candles){
  const upBid=Number(market.yes_bid_cents);
  const downBid=Number(market.no_bid_cents);
 
- const base={secondsLeft,closeMs,gap,m1,m3,m5,m10,upAsk,downAsk,upBid,downBid};
+ const base={
+  secondsLeft,closeMs,gap,m1,m3,m5,m10,
+  upAsk,downAsk,upBid,downBid
+ };
 
  if(!Number.isFinite(upAsk)||!Number.isFinite(downAsk))
-  return noTrade('Both UP and DOWN ask prices are required.',base);
+  return noTrade('Contract ask prices are unavailable.',base);
 
+ // Normalize each indicator to a common -1 to +1 scale.
+ const gapScore=clamp(gap/0.05);
+ const s1=clamp(m1/0.015);
+ const s3=clamp(m3/0.030);
+ const s5=clamp(m5/0.050);
+ const s10=clamp(m10/0.080);
+
+ // Weighted directional score.
  const score=
-  .35*clamp(gap/.05)+
-  .20*clamp(m3/.025)+
-  .20*clamp(m5/.04)+
-  .25*clamp(m10/.07);
+  gapScore*0.25+
+  s1*0.10+
+  s3*0.25+
+  s5*0.25+
+  s10*0.15;
 
- if(upAsk>=85&&downAsk>=85)
-  return noTrade('Both contracts are too expensive.',{...base,score});
+ const confidence=Math.round(Math.abs(score)*100);
+ const direction=score>0?'UP':'DOWN';
 
- let side=null,ask=null,bid=null;
+ const components=[gapScore,s1,s3,s5,s10];
 
- // Less restrictive momentum and alignment thresholds.
- if(gap>=.015&&m3>.003&&m5>.006&&m10>.01&&score>=.35){
-  side='UP';ask=upAsk;bid=upBid;
- }
+ const alignment=components.filter(v=>
+  direction==='UP'?v>0.08:v< -0.08
+ ).length;
 
- if(gap<=-.015&&m3<-.003&&m5<-.006&&m10<-.01&&score<=-.35){
-  side='DOWN';ask=downAsk;bid=downBid;
- }
+ const opposite=components.filter(v=>
+  direction==='UP'?v< -0.35:v>0.35
+ ).length;
 
- if(!side)
-  return noTrade('BTC direction, target gap and momentum do not agree strongly enough.',{...base,score});
+ const common={
+  ...base,
+  score,
+  confidence,
+  alignment,
+  gapScore
+ };
+
+ // Avoid entries when price is almost exactly at the target.
+ if(Math.abs(gap)<0.005)
+  return noTrade('BTC is too close to the target price.',common);
+
+ // A strong opposing indicator can invalidate the setup.
+ if(opposite>=2)
+  return noTrade('Conflicting momentum detected.',common);
+
+ // Require a minimum amount of directional agreement,
+ // but do not require every timeframe to agree.
+ if(alignment<3)
+  return noTrade('Not enough indicators support one direction.',common);
+
+ if(confidence<MIN_CONFIDENCE)
+  return noTrade('Signal strength is below the entry threshold.',common);
+
+ const ask=direction==='UP'?upAsk:downAsk;
+ const bid=direction==='UP'?upBid:downBid;
 
  if(!Number.isFinite(ask)||ask<=0||ask>=100)
-  return noTrade('Selected contract ask is invalid',base);
+  return noTrade('Selected contract price is invalid.',common);
 
- const spread=Number.isFinite(bid)?ask-bid:null;
- if(spread!==null&&spread>8)
-  return noTrade('Bid/ask spread is too wide. Skipping this setup.',base);
+ if(ask>MAX_ENTRY_CENTS)
+  return noTrade('Contract is too expensive for this strategy.',common);
 
- if(ask>=75)
-  return noTrade('Contract price is too expensive for this strategy.',base);
+ if(!Number.isFinite(bid)||bid<0)
+  return noTrade('Selected contract bid is unavailable.',common);
+
+ const spread=ask-bid;
+
+ if(spread<0||spread>MAX_SPREAD_CENTS)
+  return noTrade('Bid/ask spread is too wide.',{
+   ...common,spread
+  });
 
  const entry=ask;
- const takeProfit=Math.min(99,entry+TAKE_PROFIT_CENTS);
- const stopLoss=Math.max(1,entry-STOP_LOSS_CENTS);
+
+ const takeProfit=Math.min(
+  99,entry+TAKE_PROFIT_CENTS
+ );
+
+ const stopLoss=Math.max(
+  1,entry-STOP_LOSS_CENTS
+ );
 
  return {
-  ...base,score,side,ask,bid,entry,takeProfit,stopLoss,
-  message:`BUY ${side} at ${cents(entry)} or less. Suggested take profit ${cents(takeProfit)}; stop loss ${cents(stopLoss)}.`,
+  ...common,
+  side:direction,
+  ask,
+  bid,
+  spread,
+  entry,
+  takeProfit,
+  stopLoss,
+  message:
+   `BUY ${direction} at ${cents(entry)} or less. `+
+   `Take profit ${cents(takeProfit)}. `+
+   `Stop loss ${cents(stopLoss)}.`,
   reasons:[
+   `Signal strength: ${confidence}/100 (not a win probability).`,
+   `Indicator agreement: ${alignment}/5.`,
    `BTC versus target: ${pct(gap)}.`,
-   `Momentum: 3m ${pct(m3)}, 5m ${pct(m5)}, 10m ${pct(m10)}.`,
-   `Technical alignment score: ${Math.round(Math.abs(score)*100)}/100.`,
-   `Current ${side} ask: ${cents(ask)}; current bid: ${cents(bid)}.`,
-   'Targets are experimental and do not account for guaranteed execution or fees.'
+   `1m momentum: ${pct(m1)}.`,
+   `3m momentum: ${pct(m3)}.`,
+   `5m momentum: ${pct(m5)}.`,
+   `10m momentum: ${pct(m10)}.`,
+   `Contract ask: ${cents(ask)}.`,
+   `Contract bid: ${cents(bid)}.`,
+   `Spread: ${cents(spread)}.`,
+   'Exit levels are illustrative; fees and slippage are not included.'
   ]
  };
 }
 
 function render(market,spot,d){
+
  const signal=$('signal');
- signal.textContent=d.side==='NONE'?'NO TRADE':'BUY '+d.side;
- signal.className='signal '+(d.side==='UP'?'up':d.side==='DOWN'?'down':'none');
- $('message').textContent=d.message;
+
+ signal.textContent=d.side==='NONE'
+  ?'NO TRADE':'BUY '+d.side;
+
+ signal.className='signal '+
+  (d.side==='UP'?'up':d.side==='DOWN'?'down':'none');
+
+ $('message').textContent=
+  d.side==='NONE'
+   ?d.message
+   :d.message+' Signal strength: '+d.confidence+'/100.';
+
  $('ticker').textContent='Market: '+(market.ticker||'—');
+
  $('spot').textContent=money(spot);
  $('strike').textContent=money(market.strike);
- $('gap').textContent=Number.isFinite(d.gap)?'Gap: '+pct(d.gap):'Gap: —';
 
- $('time').textContent=Number.isFinite(d.secondsLeft)?
-  Math.floor(Math.max(0,d.secondsLeft)/60)+':'+String(Math.max(0,d.secondsLeft)%60).padStart(2,'0'):'—';
- $('close').textContent=d.closeMs?'Close: '+new Date(d.closeMs).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'Market close';
+ $('gap').textContent=Number.isFinite(d.gap)
+  ?'Gap: '+pct(d.gap)
+  :'Gap: —';
+
+ $('time').textContent=Number.isFinite(d.secondsLeft)
+  ?Math.floor(Math.max(0,d.secondsLeft)/60)+':'+
+   String(Math.max(0,d.secondsLeft)%60).padStart(2,'0')
+  :'—';
+
+ $('close').textContent=d.closeMs
+  ?'Close: '+new Date(d.closeMs).toLocaleTimeString([],{
+   hour:'numeric',minute:'2-digit'
+  })
+  :'Market close';
+
  lastClose=d.closeMs||null;
 
  $('upAsk').textContent=cents(market.yes_ask_cents);
@@ -296,25 +449,36 @@ function render(market,spot,d){
  $('downAsk').textContent=cents(market.no_ask_cents);
  $('downBid').textContent=cents(market.no_bid_cents);
 
- $('entry').textContent=Number.isFinite(d.entry)?cents(d.entry):'—';
- $('target').textContent=Number.isFinite(d.takeProfit)?cents(d.takeProfit):'—';
- $('stop').textContent=Number.isFinite(d.stopLoss)?cents(d.stopLoss):'—';
- $('entrySide').textContent=d.side==='NONE'?'No active setup':d.side+' contract · maximum buy price';
+ $('entry').textContent=cents(d.entry);
+ $('target').textContent=cents(d.takeProfit);
+ $('stop').textContent=cents(d.stopLoss);
 
- const currentBid=d.side==='UP'?d.upBid:d.side==='DOWN'?d.downBid:NaN;
- $('sell').textContent=Number.isFinite(currentBid)?cents(currentBid):'—';
+ $('entrySide').textContent=d.side==='NONE'
+  ?'No active setup'
+  :d.side+' contract · maximum buy price';
+
+ const currentBid=d.side==='UP'
+  ?d.upBid
+  :d.side==='DOWN'?d.downBid:NaN;
+
+ $('sell').textContent=cents(currentBid);
 
  let exit='Waiting for setup';
+
  if(d.side!=='NONE'&&Number.isFinite(currentBid)){
-  if(currentBid>=d.takeProfit)exit='Take-profit level reached';
-  else if(currentBid<=d.stopLoss)exit='Stop-loss level reached';
-  else exit='Between exit levels';
+  if(currentBid>=d.takeProfit)
+   exit='Take-profit level reached';
+  else if(currentBid<=d.stopLoss)
+   exit='Stop-loss level reached';
+  else
+   exit='Between exit levels';
  }
+
  $('exitStatus').textContent=exit;
 
  $('tradeNote').textContent=d.side==='NONE'
   ?'NO TRADE: '+d.message
-  :d.message+' This is a price alert only; no position is being tracked.';
+  :d.message+' This is an alert, not an executed or tracked position.';
 
  $('m1').textContent=pct(d.m1);
  $('m3').textContent=pct(d.m3);
@@ -322,6 +486,7 @@ function render(market,spot,d){
  $('m10').textContent=pct(d.m10);
 
  $('reasons').innerHTML='';
+
  (d.reasons||[d.message]).forEach(reason=>{
   const li=document.createElement('li');
   li.textContent=reason;
@@ -329,15 +494,36 @@ function render(market,spot,d){
  });
 
  marketUrl=market.kalshi_url||'https://kalshi.com/markets/KXBTC15M';
+
  $('updated').textContent='Updated '+new Date().toLocaleTimeString();
+
+ // Prevent repeated notifications for the same unchanged signal.
+ // Notification delivery is not enabled in this version.
+ if(d.side!=='NONE'){
+  const key=[
+   market.ticker||'market',
+   d.side,
+   d.entry,
+   d.confidence
+  ].join(':');
+
+  if(key!==lastSignalKey){
+   lastSignalKey=key;
+  }
+ }else{
+  lastSignalKey='';
+ }
 }
 
 async function refresh(){
+
  if(busy)return;
+
  busy=true;
  $('refresh').disabled=true;
 
  try{
+
   const [market,ticker,raw]=await Promise.all([
    getJson(MARKET_API),
    getJson(TICKER_API),
@@ -345,44 +531,64 @@ async function refresh(){
   ]);
 
   const spot=Number(ticker.price);
-  if(!Number.isFinite(spot))throw new Error('Coinbase BTC price unavailable.');
+
+  if(!Number.isFinite(spot))
+   throw new Error('Coinbase BTC price unavailable.');
 
   const candles=candlesFrom(raw);
   const decision=evaluate(market,spot,candles);
 
   render(market,spot,decision);
+
   $('live').textContent='LIVE DATA';
   $('dot').classList.remove('off');
 
  }catch(error){
+
   $('live').textContent='DATA ISSUE';
   $('dot').classList.add('off');
+
   $('signal').textContent='NO TRADE';
   $('signal').className='signal none';
-  $('message').textContent='Could not refresh the required data. The bot will not guess.';
-  $('updated').textContent=error.message+' · retrying automatically';
+
+  $('message').textContent=
+   'Could not refresh required data. The bot will not guess.';
+
+  $('updated').textContent=
+   error.message+' · retrying automatically';
 
  }finally{
+
   busy=false;
   $('refresh').disabled=false;
  }
 }
 
 $('refresh').addEventListener('click',refresh);
-$('openMarket').addEventListener('click',()=>window.open(marketUrl,'_blank','noopener'));
+
+$('openMarket').addEventListener('click',()=>{
+ window.open(marketUrl,'_blank','noopener');
+});
 
 refresh();
 setInterval(refresh,POLL_MS);
 
 setInterval(()=>{
  if(!lastClose)return;
+
  const s=Math.floor((lastClose-Date.now())/1000);
- if(s>=0)$('time').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+
+ if(s>=0){
+  $('time').textContent=
+   Math.floor(s/60)+':'+
+   String(s%60).padStart(2,'0');
+ }
 },1000);
 
 if('serviceWorker' in navigator&&location.protocol.startsWith('http')){
  navigator.serviceWorker.register('./sw.js').catch(()=>{});
 }
+
 })();
 </script>
 </body>
