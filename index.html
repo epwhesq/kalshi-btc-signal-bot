@@ -455,8 +455,10 @@ reversalWarning,
    `Contract ask: ${cents(ask)}.`,
    `Contract bid: ${cents(bid)}.`,
    `Spread: ${cents(spread)}.`,
-   'Exit levels are illustrative; fees and slippage are not included.'
-  ]
+   'Exit levels are illustrative; fees and slippage are not included.',
+`Dynamic maximum entry: ${cents(dynamicMax)}.`,
+`Momentum reversal warning: ${reversalWarning?'YES':'NO'}.`
+]
  };
 }
 
