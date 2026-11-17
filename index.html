@@ -391,8 +391,21 @@ const reversalWarning =
  if(!Number.isFinite(ask)||ask<=0||ask>=100)
   return noTrade('Selected contract price is invalid.',common);
 
- if(ask>MAX_ENTRY_CENTS)
-  return noTrade('Contract is too expensive for this strategy.',common);
+ const preliminarySpread=ask-bid;
+
+if(!Number.isFinite(preliminarySpread)||preliminarySpread<0)
+ return noTrade('Invalid contract spread.',common);
+
+const dynamicMax=dynamicEntryLimit(
+ confidence,
+ preliminarySpread
+);
+
+if(ask>dynamicMax)
+ return noTrade(
+  `Contract ask ${cents(ask)} exceeds dynamic entry limit ${cents(dynamicMax)}.`,
+  {...common,dynamicMax}
+ );
 
  if(!Number.isFinite(bid)||bid<0)
   return noTrade('Selected contract bid is unavailable.',common);
